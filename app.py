@@ -1,43 +1,55 @@
-from fastapi import FastAPI, Query
-from diffusers import StableDiffusionPipeline
-from safetensors.torch import load_file
-from huggingface_hub import hf_hub_download
 import torch
+import os
+import requests
+from uuid import uuid4
 from PIL import Image
-import io
-from fastapi.responses import StreamingResponse
+from fastapi import FastAPI, Query
+from fastapi.staticfiles import StaticFiles
+from diffusers import StableDiffusionPipeline, DPMSolverMultistepScheduler
 
+# Ensure static directory exists
+os.makedirs("/tmp/static", exist_ok=True)
+
+# Create FastAPI app
 app = FastAPI()
+app.mount("/static", StaticFiles(directory="/tmp/static"), name="static")
 
-# ✅ STEP 1: Load base model (2.1 works best with LoRA)
-base_model = "stabilityai/stable-diffusion-2-1-base"
+# LoRA model download info
+LORA_URL = "https://huggingface.co/nexo-here/shohan-lora/resolve/main/shohan-lora.safetensors"
+LORA_PATH = "shohan-lora.safetensors"
+
+# Download LoRA model if not already present
+if not os.path.exists(LORA_PATH):
+    print("🔽 Downloading LoRA file...")
+    r = requests.get(LORA_URL)
+    with open(LORA_PATH, "wb") as f:
+        f.write(r.content)
+    print("✅ LoRA downloaded.")
+
+# Load base model and apply LoRA
+print("🚀 Loading base model...")
 pipe = StableDiffusionPipeline.from_pretrained(
-    base_model,
+    "stabilityai/stable-diffusion-2-1",
     torch_dtype=torch.float16,
+    use_safetensors=True,
+    variant="fp16"
 ).to("cuda")
 
-# ✅ STEP 2: Load LoRA weights from HuggingFace
-lora_model = "nexo-here/shohan-lora"
-lora_file = "shohan-lora.safetensors"
-trigger = "Shohan"
+pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
+pipe.load_lora_weights(LORA_PATH)
+pipe.fuse_lora()
+print("✅ LoRA loaded and fused.")
 
-print("🔁 Downloading LoRA file...")
-lora_path = hf_hub_download(repo_id=lora_model, filename=lora_file)
-pipe.load_lora_weights(lora_path)
-print("✅ LoRA loaded.")
-
+# Endpoint for image generation
 @app.get("/gen")
-def generate(prompt: str = Query(...)):
-    # Add trigger word automatically
-    full_prompt = f"{trigger}, {prompt}"
+async def generate_image(prompt: str = Query(..., description="Enter your prompt")):
+    final_prompt = f"Shohan {prompt}"
+    image = pipe(final_prompt, num_inference_steps=30, guidance_scale=7.5).images[0]
+    filename = f"{uuid4().hex}.png"
+    filepath = f"/tmp/static/{filename}"
+    image.save(filepath)
 
-    # Generate image
-    image = pipe(full_prompt, num_inference_steps=30, guidance_scale=7.5).images[0]
-
-    # Convert to stream
-    img_bytes = io.BytesIO()
-    image.save(img_bytes, format='PNG')
-    img_bytes.seek(0)
-
-    return StreamingResponse(img_bytes, media_type="image/png")
-  
+    return {
+        "prompt": prompt,
+        "image_url": f"https://shohan-lora-api.onrender.com/static/{filename}"
+    }
