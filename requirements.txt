@@ -1,9 +1,9 @@
+torch==2.5.0
+diffusers==0.28.0
+transformers==4.40.0
+accelerate==0.30.0
+safetensors
 fastapi
 uvicorn
-diffusers==0.24.0
-transformers==4.39.3
-safetensors
-torch==2.5.0
-accelerate
 Pillow
-huggingface_hub==0.19.4
+requests
