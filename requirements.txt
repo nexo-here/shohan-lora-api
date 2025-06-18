@@ -3,7 +3,7 @@ uvicorn
 diffusers==0.24.0
 transformers
 safetensors
-torch==2.0.1
+torch==2.5.0
 accelerate
 Pillow
 huggingface_hub
