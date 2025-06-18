@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+diffusers==0.24.0
+transformers
+safetensors
+torch==2.0.1
+accelerate
+Pillow
+huggingface_hub
